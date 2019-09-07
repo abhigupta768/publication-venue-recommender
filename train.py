@@ -9,6 +9,8 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.utils.data
+import torch.optim as optim
+from torch.nn.utils import clip_grad_norm_
 
 from sklearn import metrics
 
@@ -21,6 +23,8 @@ import numpy as np
 from tqdm import tqdm
 torch.manual_seed(1234)
 
+torch.cuda.set_device(0)
+torch.cuda.manual_seed(1234)
 
 class dataset(torch.utils.data.Dataset):
 
@@ -44,9 +48,8 @@ def get_loader(dataset, batch_size, shuffle, num_workers):
                                               num_workers=num_workers)
     return data_loader
 
-cwd=os.getcwd()
-batch_size = 256
-print('loading data...\n')
+batch_size = 128
+print('loading data...')
 start_time = time.time()
 datas = torch.load('./data/final_data')  
 print('loading time cost: %.3f' % (time.time()-start_time))
@@ -55,18 +58,17 @@ trainloader = get_loader(trainset, batch_size=batch_size, shuffle=True, num_work
 valloader = get_loader(valset, batch_size=batch_size, shuffle=False, num_workers=2)
 print('dataloader prepared')
 
-model = hanLSTM(10, 25, 400, 500, 50000, 400, 300, 300)
-optim = Optim("adam", 0.01, 10, lr_decay=1e-5, start_decay_at=10)
-
-optim.set_parameters(model.parameters())
-
+model = hanLSTM(10, 25, 300, 300, 50000, 300, 300, 600)
+model.cuda()
+optimizer = optim.Adam(model.parameters(), lr=6e-4, weight_decay=3e-4)
+# optimizer = optim.SGD(model.parameters(), lr=5e-3, weight_decay=1e-4, momentum=0.9)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=2, verbose=True)
 param_count = 0
 for param in model.parameters():
     param_count += param.view(-1).size()[0]
 
 updates = 0
 loss_function = nn.CrossEntropyLoss()
-eval_interval = 100000
 
 def eval_metrics(y_pred, y_true):
     accuracy = metrics.accuracy_score(y_true, y_pred)
@@ -77,29 +79,46 @@ def eval_metrics(y_pred, y_true):
     return {'accuracy': accuracy, 'f1': f1,
             'precision': precision, 'recall': recall}
 
+def save_model(path):
+    model_state_dict = model.state_dict()
+    checkpoints = {
+        'model': model_state_dict,
+        'optim': optimizer.state_dict()}
+    torch.save(checkpoints, path)
+
+print_interval = 200
+max_val_acc = 0
 def train(epoch):
     model.train()
-    global e, loss, updates, total_loss, start_time, report_total
+    global e, loss, updates, total_loss, start_time, report_total, max_val_acc
     for e in range(1, epoch + 1):
-        loop = tqdm(trainloader)
-        for x_list, y in loop:
-            bx = Variable(x_list[0].type(torch.LongTensor))
-            by = Variable(y.type(torch.FloatTensor))
+        updates=0
+        for x_list, y in trainloader:
+            bx = Variable(x_list[0].type(torch.LongTensor)).cuda()
+            by = Variable(y.type(torch.FloatTensor)).cuda()
             model.zero_grad()
             y_pre = model(bx)
             loss = loss_function(y_pre, torch.max(by, 1)[1])
             loss.backward()
-            for param in model.parameters():
-                print(param.grad)
-            optim.step()
-            loop.set_description('Epoch {}/{}'.format(e, epoch))
-            loop.set_postfix(loss=str(loss.item()))
+            clip_grad_norm_(model.parameters(), 5)
+            optimizer.step()
+            updates+=1
+            if updates % print_interval == 0:
+              print('Epoch: {}, Update: {}, Training Loss: {}'.format(e, updates, loss.item()))
+        print("\nEvaluating\n")
+        score=eval()
+        scheduler.step(score['accuracy'])
+        if score['accuracy'] >= max_val_acc:
+          print("Validation Accuracy increased to {} from {}. Saving Model...\n".format(score['accuracy'], max_val_acc))
+          max_val_acc = score['accuracy']
+          save_model('./trained_models/' + str(max_val_acc) + '_checkpoint.pt')
+        model.train()
 
 def eval():
     model.eval()
     y_true, y_pred = [], []
     for x_list, y in valloader:
-        bx, by = Variable(x_list[0].type(torch.LongTensor)), Variable(y)
+        bx, by = Variable(x_list[0].type(torch.LongTensor)).cuda(), Variable(y).cuda()
         y_pre = model(bx)
         y_label = torch.max(y_pre, 1)[1].data
         y_true.extend(torch.max(y, 1)[1].tolist())
@@ -108,10 +127,8 @@ def eval():
     score = {}
     result = eval_metrics(y_pred, y_true)
     print('Epoch: %d | Updates: %d | Train loss: %.4f | Accuracy: %.4f | F1: %.4f | Precision: %.4f | Recall: %.4f'
-          % (e, updates, loss.data[0], result['accuracy'], result['f1'], result['precision'], result['recall']))
+          % (e, updates, loss.item(), result['accuracy'], result['f1'], result['precision'], result['recall']))
     score['accuracy'] = result['accuracy']
-    score['f1'] = result['f1']
-
     return score
 
 def main():
