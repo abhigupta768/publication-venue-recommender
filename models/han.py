@@ -7,7 +7,7 @@ from models.attention import Attention
 
 class hanLSTM(nn.Module):
     def __init__(self, doc_len, text_len, word_hidden_size, embed_dim,
-                 vocab_size, sent_hidden_size, num_classes, linear_out_size):
+                 vocab_size, sent_hidden_size, num_classes, linear_out_size_1, linear_out_size_2):
         super(hanLSTM, self).__init__()
 
         self.doc_len = doc_len
@@ -17,18 +17,19 @@ class hanLSTM(nn.Module):
         self.sent_hidden_size = sent_hidden_size
         self.vocab_size = vocab_size
         self.num_classes = num_classes
-        self.linear_out_size = linear_out_size
-
+        self.linear_out_size_1 = linear_out_size_1
+        self.linear_out_size_2 = linear_out_size_2
         self.embedding = nn.Embedding(self.vocab_size, self.embed_size)
         self.sent_wise_lstms = nn.ModuleList()
         self.sent_wise_attlstms = nn.ModuleList()
         for i in range(self.doc_len):
-            self.sent_wise_lstms.append(lstm_cell(self.embed_size, self.word_hidden_size))
-            self.sent_wise_attlstms.append(nn.Sequential(Attention(self.word_hidden_size),nn.ReLU()))
-        self.doc_lstm = lstm_cell(self.word_hidden_size, self.sent_hidden_size)
+            self.sent_wise_lstms.append(nn.Sequential(lstm_cell(self.embed_size, self.word_hidden_size), nn.Dropout(p=0.2)))
+            self.sent_wise_attlstms.append(Attention(self.word_hidden_size))
+        self.doc_lstm = nn.Sequential(lstm_cell(self.word_hidden_size, self.sent_hidden_size),nn.Dropout(p=0.2))
         self.doc_attention = Attention(self.sent_hidden_size)
-        self.linear_stack = nn.Sequential(nn.ReLU(), nn.Linear(self.sent_hidden_size, self.linear_out_size), nn.ReLU(), 
-                                          nn.Linear(self.linear_out_size, self.num_classes))
+        self.linear_stack = nn.Sequential(nn.Linear(self.sent_hidden_size, self.linear_out_size_2), nn.ReLU(), 
+                                          nn.Dropout(p=0.3), nn.Linear(self.linear_out_size_2, self.linear_out_size_1), nn.ReLU(), 
+                                          nn.Linear(self.linear_out_size_1, self.num_classes))
     
     def forward(self, x):
         """
