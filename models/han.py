@@ -6,8 +6,8 @@ from models.lstm import lstm_cell
 from models.attention import Attention
 
 class hanLSTM(nn.Module):
-    def __init__(self, doc_len, text_len, word_hidden_size, embed_dim,
-                 vocab_size, sent_hidden_size, num_classes, linear_out_size_1, linear_out_size_2):
+    def __init__(self, doc_len, text_len, vocab_size, embed_dim, word_hidden_size,
+                 sent_hidden_size, linear_out_size_2, linear_out_size_1, num_classes):
         super(hanLSTM, self).__init__()
 
         self.doc_len = doc_len
@@ -23,12 +23,12 @@ class hanLSTM(nn.Module):
         self.sent_wise_lstms = nn.ModuleList()
         self.sent_wise_attlstms = nn.ModuleList()
         for i in range(self.doc_len):
-            self.sent_wise_lstms.append(nn.Sequential(lstm_cell(self.embed_size, self.word_hidden_size), nn.Dropout(p=0.2)))
+            self.sent_wise_lstms.append(nn.Sequential(lstm_cell(self.embed_size, self.word_hidden_size), nn.Dropout(p=0.5)))
             self.sent_wise_attlstms.append(Attention(self.word_hidden_size))
-        self.doc_lstm = nn.Sequential(lstm_cell(self.word_hidden_size, self.sent_hidden_size),nn.Dropout(p=0.2))
+        self.doc_lstm = nn.Sequential(lstm_cell(self.word_hidden_size, self.sent_hidden_size), nn.Dropout(p=0.5))
         self.doc_attention = Attention(self.sent_hidden_size)
         self.linear_stack = nn.Sequential(nn.Linear(self.sent_hidden_size, self.linear_out_size_2), nn.ReLU(), 
-                                          nn.Dropout(p=0.3), nn.Linear(self.linear_out_size_2, self.linear_out_size_1), nn.ReLU(), 
+                                          nn.Dropout(p=0.3), nn.Linear(self.linear_out_size_2, self.linear_out_size_1), nn.ReLU(),
                                           nn.Linear(self.linear_out_size_1, self.num_classes))
     
     def forward(self, x):
@@ -60,5 +60,5 @@ class hanLSTM(nn.Module):
         doc_lstm = self.doc_lstm(doc_representation)
         att_doc_lstm = self.doc_attention(doc_lstm)
         y_ = self.linear_stack(att_doc_lstm)
-        y=F.softmax(y_)
-        return y
+        # y=F.softmax(y_)
+        return y_
