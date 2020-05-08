@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class lstm_cell(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers = 2, dropout = 0, bi = False, batch_first = True):
+    def __init__(self, input_size, hidden_size, num_layers = 1, dropout = 0, bi = True, batch_first = True):
         super(lstm_cell, self).__init__()
 
         self.hidden_size = hidden_size
