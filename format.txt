@@ -9,7 +9,7 @@
 The following is an example:
 
 #*Information geometry of U-Boost and Bregman divergence
-#@Noboru Murata,Takashi Takenouchi,Takafumi Kanamori,Shinto Eguchi
+#@Noboru Murata;Takashi Takenouchi;Takafumi Kanamori;Shinto Eguchi
 #t2004
 #cNeural Computation
 #index436405
